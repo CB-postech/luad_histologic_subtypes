@@ -63,17 +63,16 @@ The analysis uses both **R** and **Python**.
 ### R
 
 - R ≥ 4.4  
-- Core packages (non-exhaustive):
+- Core packages
   - `Seurat`, `SeuratObject`
   - `Harmony`
   - `dplyr`, `data.table`
   - `ggplot2`, `patchwork`
-  - `SingleR` (or other annotation tools)
 
 ### Python
 
 - Python ≥ 3.9  
-- Core packages (non-exhaustive):
+- Core packages
   - `scanpy`, `anndata`
   - `numpy`, `pandas`
   - `matplotlib`, `seaborn`
