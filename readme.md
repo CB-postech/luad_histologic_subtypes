@@ -1,4 +1,4 @@
-# Single-cell and Spatial Profiling of Histologic Subtypes in Lung Adenocarcinoma
+# Single-cell and spatial transcriptomics analysis of histologic subtypes in Lung Adenocarcinoma
 
 This repository contains code and analysis pipelines for a study of the cellular and spatial architecture underlying histologic subtypes of lung adenocarcinoma (LUAD), based on single-cell RNA sequencing (scRNA-seq) and spatial transcriptomics (10x Visium).
 
