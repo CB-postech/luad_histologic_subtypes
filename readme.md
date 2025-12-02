@@ -20,8 +20,6 @@ Our analyses show that histologic subtypes can be distinguished by:
 
 We dissect intercellular interactions among cancer cells, macrophages, and CD8⁺ T cells in the prognostically unfavorable solid subtype, revealing how these interactions drive cancer cell plasticity and promote an immunosuppressive TME. Furthermore, we identify **HMGA1** as a potential clinically relevant biomarker and therapeutic target for solid-subtype LUAD.
 
-### Conclusions
-These findings deepen our understanding of the histologic heterogeneity of LUAD and may facilitate the development of subtype-specific biomarkers and targeted therapeutic strategies.
 
 ---
 
