@@ -55,9 +55,9 @@ The analysis uses both **R** and **Python**.
 
 - Python ≥ 3.9  
 - Core packages
-  - `anndata`, `scanpy`, `celltypist`
   - `numpy`, `pandas`, `scikit-learn`
+  - `anndata`, `scanpy`, `celltypist`
   - `matplotlib`, `seaborn`
-  - `celltypist`
+  
 
 ---
