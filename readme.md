@@ -35,9 +35,6 @@ Interactive visualization of selected processed datasets is available via **cell
 
 👉 [Open in cellxgene] TBA
 
-Through the cellxgene interface, users can:
-- explore cell type and subtype annotations,  
-- inspect distributions across histologic subtypes and samples.
 
 ---
 
@@ -58,10 +55,9 @@ The analysis uses both **R** and **Python**.
 
 - Python ≥ 3.9  
 - Core packages
-  - `scanpy`, `anndata`
-  - `numpy`, `pandas`
+  - `anndata`, `scanpy`, `celltypist`
+  - `numpy`, `pandas`, `scikit-learn`
   - `matplotlib`, `seaborn`
-  - `scikit-learn`
   - `celltypist`
 
 ---
