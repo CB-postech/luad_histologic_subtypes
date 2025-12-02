@@ -8,7 +8,7 @@ approaches and Gaussian mixture models. It computes bimodality indices for each
 sample and performs statistical comparisons across groups.
 
 Requirements:
-    - Python 3.8+
+    - Python 3.9+
     - scanpy
     - numpy
     - pandas
