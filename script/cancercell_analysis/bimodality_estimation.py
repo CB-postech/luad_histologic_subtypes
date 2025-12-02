@@ -1,23 +1,34 @@
-### The method orginally inspired by Wang et al
-
 #!/usr/bin/env python3
 """
-Cancer Cell Bimodality Analysis
-================================
-Analyzes clonal heterogeneity in cancer cells using cell-cell correlation bimodality.
+Bimodality Analysis of Single-Cell RNA-seq Data
+* The method orginally inspired by Wang et al. (https://doi.org/10.4137/cin.s2846)
 
-This script:
-1. Loads single-cell RNA-seq data of cancer cells
-2. Identifies highly variable genes
-3. Calculates cell-cell correlation matrices per sample
-4. Computes bimodality index using Gaussian Mixture Models
-5. Performs statistical analysis (ANOVA + Tukey HSD)
-6. Generates visualization
+This script analyzes bimodality in cancer cell populations using correlation-based
+approaches and Gaussian mixture models. It computes bimodality indices for each
+sample and performs statistical comparisons across groups.
+
+Requirements:
+    - Python 3.8+
+    - scanpy
+    - numpy
+    - pandas
+    - scipy
+    - scikit-learn
+    - statsmodels
+    - matplotlib
+
+Usage:
+    python bimodality_analysis.py --data_dir /path/to/data --output_dir /path/to/output
 """
 
 from __future__ import annotations
+
+import os
+import sys
 import logging
+import argparse
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 import numpy as np
 import pandas as pd
@@ -31,396 +42,467 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
-# ══════════════════════════════════════════════════════════════════════════════
+
+# ============================================================================
 # Configuration
-# ══════════════════════════════════════════════════════════════════════════════
+# ============================================================================
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
+logger = logging.getLogger(__name__)
 
-# Data paths
-DATA_DIR = Path("data/fig4_cancer_cells")
-METADATA_FILE = DATA_DIR / "metadata.csv"
 
-# Analysis parameters
-N_HVG = 5000  # Number of highly variable genes
-TARGET_SUM = 1e4  # Normalization target
-ALPHA_LEVEL = 0.05  # Significance level for statistical tests
+# ============================================================================
+# Bimodality Calculation Functions
+# ============================================================================
 
-# Histologic subtype mapping
-HISTOLOGIC_GROUPS = {
-    "Sample01": "MP", "Sample02": "Solid", "Sample03": "Solid",
-    "Sample04": "AP+Solid", "Sample05": "AP+Solid", "Sample06": "AP+Solid",
-    "Sample07": "Solid", "Sample08": "AP+Solid", "Sample09": "MP",
-    "Sample11": "Solid", "Sample12": "AP", "Sample13": "AP+Solid",
-    "Sample14": "AP", "Sample16": "AP", "Sample18": "MP",
-    "Sample19": "AP", "Sample20": "AP", "Sample22": "AP"
-}
-
-# Group classification for analysis
-GROUP_MAPPING = {
-    'Sample01': 'G4_MP', 'Sample02': 'G3_Solid', 'Sample03': 'G3_Solid',
-    'Sample04': 'G2_AP+Solid', 'Sample05': 'G2_AP+Solid', 'Sample06': 'G2_AP+Solid',
-    'Sample07': 'G3_Solid', 'Sample08': 'G2_AP+Solid', 'Sample09': 'G4_MP',
-    'Sample11': 'G3_Solid', 'Sample12': 'G1_AP', 'Sample13': 'G2_AP+Solid',
-    'Sample14': 'G1_AP', 'Sample16': 'G1_AP', 'Sample18': 'G4_MP',
-    'Sample19': 'G1_AP', 'Sample20': 'G1_AP', 'Sample22': 'G1_AP'
-}
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Core Functions
-# ══════════════════════════════════════════════════════════════════════════════
-
-def calc_bimodality_index(data: np.ndarray | pd.DataFrame) -> float:
+def calculate_bimodality_index(data: np.ndarray | pd.DataFrame) -> float:
     """
-    Calculate bimodality index using Gaussian Mixture Model.
+    Calculate bimodality index using Gaussian mixture models.
     
-    The bimodality index measures the separation between two distributions:
+    The bimodality index (BI) quantifies the degree of separation between
+    two subpopulations in a distribution using:
     BI = δ * sqrt(π * (1 - π))
-    where δ is the standardized distance between means and π is the minimum weight.
+    
+    where δ is the standardized distance between means and π is the 
+    mixing proportion of the minor component.
     
     Parameters
     ----------
-    data : array-like
-        Correlation coefficients or other continuous data
+    data : np.ndarray or pd.DataFrame
+        Input data for bimodality assessment.
         
     Returns
     -------
     float
-        Bimodality index (higher = more bimodal)
+        Bimodality index value.
+        
+    References
+    ----------
+    Wang et al. (2009). A mixture model with dependent observations for test reliability. 
+    Journal of Data Science, 7, 105-114.
     """
-    # Convert to numpy array
+    # Convert DataFrame to numpy array if needed
     if isinstance(data, pd.DataFrame):
         data = data.values.flatten()
     
-    # Reshape for GMM
+    # Reshape for GMM (requires 2D array)
     data = data.reshape(-1, 1)
     
-    # Fit mixture of two Gaussians
+    # Fit two-component Gaussian mixture model with tied covariances
     gmm = GaussianMixture(n_components=2, covariance_type='tied', random_state=42)
     gmm.fit(data)
     
-    # Extract parameters
+    # Extract model parameters
     means = gmm.means_.flatten()
     std_dev = np.sqrt(gmm.covariances_).flatten()[0]
     weights = gmm.weights_
     
-    # Sort to ensure mean1 < mean2
-    if means[0] > means[1]:
-        means = means[::-1]
-        weights = weights[::-1]
+    # Sort components by mean (ensure mean1 < mean2)
+    sorted_idx = np.argsort(means)
+    mean1, mean2 = means[sorted_idx]
+    weight1, weight2 = weights[sorted_idx]
     
-    mean1, mean2 = means
-    weight1, weight2 = weights
-    
-    # Calculate standardized distance and bimodality index
+    # Calculate standardized distance between modes
     delta = abs(mean1 - mean2) / std_dev
-    pi = min(weight1, weight2)
-    bi = delta * np.sqrt(pi * (1 - pi))
+    
+    # Calculate mixing proportion of minor component
+    pi_minor = min(weight1, weight2)
+    
+    # Compute bimodality index
+    bi = delta * np.sqrt(pi_minor * (1 - pi_minor))
     
     return bi
 
 
-def load_data(data_dir: Path, metadata_path: Path) -> ad.AnnData:
+def compute_pairwise_correlations(expr_matrix: np.ndarray) -> np.ndarray:
     """
-    Load 10X format data and metadata.
+    Compute pairwise correlation coefficients between cells.
+    
+    Parameters
+    ----------
+    expr_matrix : np.ndarray
+        Expression matrix (cells × genes).
+        
+    Returns
+    -------
+    np.ndarray
+        Upper triangle of correlation matrix (excluding diagonal).
+    """
+    # Compute cell-cell correlation matrix
+    corr_matrix = np.corrcoef(expr_matrix)
+    
+    # Extract upper triangle (excluding diagonal)
+    upper_tri_idx = np.triu_indices(corr_matrix.shape[0], k=1)
+    upper_tri_values = corr_matrix[upper_tri_idx]
+    
+    return upper_tri_values
+
+
+# ============================================================================
+# Data Loading and Preprocessing
+# ============================================================================
+
+def load_data(data_dir: Path, 
+              sample_groups: Dict[str, str]) -> ad.AnnData:
+    """
+    Load and preprocess single-cell RNA-seq data.
     
     Parameters
     ----------
     data_dir : Path
-        Directory containing matrix.mtx, barcodes.tsv, genes.tsv
-    metadata_path : Path
-        Path to metadata CSV file
+        Directory containing 10X format data (matrix.mtx, barcodes.tsv, genes.tsv).
+    sample_groups : Dict[str, str]
+        Mapping of sample IDs to group labels.
         
     Returns
     -------
-    AnnData
-        Annotated data object with metadata
+    ad.AnnData
+        Annotated data object with metadata.
     """
-    logging.info("Loading 10X format data...")
+    logger.info(f"Loading data from {data_dir}")
+    
+    # Load 10X format data
     adata = sc.read_10x_mtx(data_dir, var_names='gene_symbols', cache=True)
     
-    logging.info("Loading metadata...")
-    metadata = pd.read_csv(metadata_path, index_col=0)
+    # Load metadata
+    metadata_path = data_dir / "metadata.csv"
+    if metadata_path.exists():
+        metadata = pd.read_csv(metadata_path, index_col=0)
+        adata.obs = metadata.loc[adata.obs_names, :].copy()
     
-    # Align and add metadata
-    adata.obs = metadata.loc[adata.obs_names, :].copy()
+    # Rename columns for standardization
+    if 'specimenID' in adata.obs.columns:
+        adata.obs = adata.obs.rename(columns={'specimenID': 'sample_id'})
+    if 'histogroup' in adata.obs.columns:
+        adata.obs = adata.obs.rename(columns={'histogroup': 'group'})
     
-    logging.info(f"Loaded {adata.shape[0]} cells × {adata.shape[1]} genes")
+    # Map samples to groups
+    if 'sample_id' in adata.obs.columns:
+        adata.obs['group'] = adata.obs['sample_id'].map(sample_groups)
+    
+    logger.info(f"Loaded {adata.shape[0]} cells × {adata.shape[1]} genes")
+    logger.info(f"Group distribution:\n{adata.obs['group'].value_counts()}")
     
     return adata
 
 
-def prepare_data(adata: ad.AnnData) -> ad.AnnData:
+def identify_highly_variable_genes(adata: ad.AnnData, 
+                                   n_top_genes: int = 5000) -> ad.AnnData:
     """
-    Prepare data by updating histologic subtypes.
+    Identify highly variable genes for downstream analysis.
     
     Parameters
     ----------
-    adata : AnnData
-        Input annotated data
+    adata : ad.AnnData
+        Annotated data object.
+    n_top_genes : int
+        Number of top variable genes to select.
         
     Returns
     -------
-    AnnData
-        Processed annotated data with updated subtypes
+    ad.AnnData
+        AnnData object with HVG annotation in .var['highly_variable'].
     """
-    # Update histologic subtypes with ground truth
-    adata.obs['hist_subtype'] = adata.obs['specimenID'].map(HISTOLOGIC_GROUPS)
+    logger.info(f"Identifying top {n_top_genes} highly variable genes")
     
-    logging.info(f"Subtype distribution:\n{adata.obs['hist_subtype'].value_counts()}")
-    logging.info(f"Total samples: {adata.obs['specimenID'].nunique()}")
-    
-    return adata
-
-
-def identify_hvg(adata: ad.AnnData, n_top_genes: int = 5000) -> None:
-    """
-    Identify highly variable genes.
-    
-    Parameters
-    ----------
-    adata : AnnData
-        Input data (modified in place)
-    n_top_genes : int
-        Number of top variable genes to select
-    """
-    logging.info(f"Identifying top {n_top_genes} highly variable genes...")
     sc.pp.highly_variable_genes(
         adata, 
         n_top_genes=n_top_genes, 
         flavor='seurat_v3', 
         subset=False
     )
+    
     n_hvg = adata.var['highly_variable'].sum()
-    logging.info(f"Found {n_hvg} highly variable genes")
+    logger.info(f"Identified {n_hvg} highly variable genes")
+    
+    return adata
 
 
-def calculate_sample_bimodality(
-    adata: ad.AnnData, 
-    sample_id: str,
-    target_sum: float = 1e4
-) -> float:
+# ============================================================================
+# Bimodality Analysis
+# ============================================================================
+
+def analyze_sample_bimodality(adata: ad.AnnData, 
+                              sample_id: str,
+                              hvg_genes: pd.Index) -> Tuple[str, float]:
     """
-    Calculate bimodality index for a single sample.
+    Compute bimodality index for a single sample.
     
     Parameters
     ----------
-    adata : AnnData
-        Full dataset with HVG annotations
+    adata : ad.AnnData
+        Full annotated data object.
     sample_id : str
-        Sample identifier
-    target_sum : float
-        Normalization target sum
+        Sample identifier to analyze.
+    hvg_genes : pd.Index
+        Highly variable gene names.
         
     Returns
     -------
-    float
-        Bimodality index
+    Tuple[str, float]
+        Sample ID and bimodality index.
     """
+    logger.info(f"Processing sample: {sample_id}")
+    
     # Subset to sample
-    adata_subset = adata[adata.obs["specimenID"] == sample_id].copy()
+    adata_sample = adata[adata.obs['sample_id'] == sample_id].copy()
     
     # Normalize and log-transform
-    sc.pp.normalize_total(adata_subset, target_sum=target_sum)
-    sc.pp.log1p(adata_subset)
+    sc.pp.normalize_total(adata_sample, target_sum=1e4)
+    sc.pp.log1p(adata_sample)
     
-    # Subset to HVG
-    hvg_genes = adata.var_names[adata.var['highly_variable']]
-    adata_subset = adata_subset[:, hvg_genes].copy()
+    # Subset to highly variable genes
+    adata_sample = adata_sample[:, hvg_genes].copy()
     
-    # Get expression matrix
-    if sp.issparse(adata_subset.X):
-        hvg_matrix = adata_subset.X.toarray()
+    # Convert to dense matrix if sparse
+    if sp.issparse(adata_sample.X):
+        expr_matrix = adata_sample.X.toarray()
     else:
-        hvg_matrix = adata_subset.X
+        expr_matrix = adata_sample.X
     
-    # Calculate cell-cell correlation matrix
-    corr_matrix = np.corrcoef(hvg_matrix)
+    # Calculate pairwise correlations
+    correlations = compute_pairwise_correlations(expr_matrix)
     
-    # Extract upper triangle (exclude diagonal)
-    upper_tri_indices = np.triu_indices(corr_matrix.shape[0], k=1)
-    correlations = corr_matrix[upper_tri_indices]
+    # Compute bimodality index
+    corr_df = pd.DataFrame({'correlation': correlations})
+    bi = calculate_bimodality_index(corr_df)
     
-    # Calculate bimodality index
-    bimodality_index = calc_bimodality_index(correlations)
+    logger.info(f"  Bimodality index: {bi:.4f}")
     
-    return bimodality_index
+    return sample_id, bi
 
 
-def calculate_bimodality_all_samples(adata: ad.AnnData) -> pd.DataFrame:
+def run_bimodality_analysis(adata: ad.AnnData, 
+                            sample_col: str = 'sample_id') -> pd.DataFrame:
     """
-    Calculate bimodality indices for all samples.
+    Perform bimodality analysis across all samples.
     
     Parameters
     ----------
-    adata : AnnData
-        Annotated data with HVG identified
+    adata : ad.AnnData
+        Annotated data object with HVG annotation.
+    sample_col : str
+        Column name containing sample identifiers.
         
     Returns
     -------
-    DataFrame
-        Bimodality indices with sample and group information
+    pd.DataFrame
+        DataFrame with bimodality indices for each sample.
     """
-    logging.info("Calculating bimodality indices for all samples...")
+    # Get highly variable genes
+    hvg_genes = adata.var_names[adata.var['highly_variable']]
     
+    # Analyze each sample
+    samples = adata.obs[sample_col].unique()
     results = []
-    sample_list = adata.obs["specimenID"].unique()
     
-    for sample_id in sample_list:
-        logging.info(f"Processing {sample_id}...")
-        bi = calculate_sample_bimodality(adata, sample_id, TARGET_SUM)
-        logging.info(f"  Bimodality index: {bi:.3f}")
-        results.append({'sample': sample_id, 'bimodality_index': bi})
+    for sample_id in samples:
+        sample_id_str, bi = analyze_sample_bimodality(adata, sample_id, hvg_genes)
+        results.append({'sample': sample_id_str, 'bimodality_index': bi})
     
-    # Create dataframe
-    bimodality_df = pd.DataFrame(results)
-    bimodality_df['group'] = bimodality_df['sample'].map(GROUP_MAPPING)
+    # Create results DataFrame
+    df_results = pd.DataFrame(results)
     
-    logging.info(f"\nCompleted {len(results)} samples")
+    # Add group information
+    sample_to_group = adata.obs.groupby(sample_col)['group'].first().to_dict()
+    df_results['group'] = df_results['sample'].map(sample_to_group)
     
-    return bimodality_df
+    return df_results
 
 
-def perform_statistical_analysis(bimodality_df: pd.DataFrame, alpha: float = 0.05) -> None:
+# ============================================================================
+# Statistical Analysis
+# ============================================================================
+
+def perform_statistical_tests(df: pd.DataFrame) -> None:
     """
-    Perform ANOVA and Tukey HSD post-hoc test.
+    Perform ANOVA and post-hoc tests on bimodality indices.
     
     Parameters
     ----------
-    bimodality_df : DataFrame
-        Bimodality indices with group information
-    alpha : float
-        Significance level
+    df : pd.DataFrame
+        DataFrame containing 'bimodality_index' and 'group' columns.
     """
-    logging.info("\n" + "="*80)
-    logging.info("STATISTICAL ANALYSIS")
-    logging.info("="*80)
+    logger.info("\n" + "="*60)
+    logger.info("Statistical Analysis")
+    logger.info("="*60)
     
-    # ANOVA
-    model = ols('bimodality_index ~ C(group)', data=bimodality_df).fit()
+    # One-way ANOVA
+    logger.info("\nOne-way ANOVA:")
+    model = ols('bimodality_index ~ C(group)', data=df).fit()
     anova_table = sm.stats.anova_lm(model, typ=2)
-    
-    print("\nANOVA Table:")
     print(anova_table)
     
-    # Tukey HSD
+    # Tukey's HSD post-hoc test
+    logger.info("\nTukey's HSD Post-hoc Test:")
     tukey = pairwise_tukeyhsd(
-        endog=bimodality_df['bimodality_index'], 
-        groups=bimodality_df['group'], 
-        alpha=alpha
+        endog=df['bimodality_index'], 
+        groups=df['group'], 
+        alpha=0.05
     )
-    
-    print("\nTukey's HSD Test Results:")
     print(tukey)
 
 
-def create_boxplot(bimodality_df: pd.DataFrame, output_path: str = None) -> None:
+# ============================================================================
+# Visualization
+# ============================================================================
+
+def plot_bimodality_boxplot(df: pd.DataFrame, 
+                            output_path: Path | None = None) -> None:
     """
-    Create boxplot with individual data points.
+    Create boxplot visualization of bimodality indices by group.
     
     Parameters
     ----------
-    bimodality_df : DataFrame
-        Bimodality indices with group information
-    output_path : str, optional
-        Path to save figure
+    df : pd.DataFrame
+        DataFrame with 'group' and 'bimodality_index' columns.
+    output_path : Path, optional
+        Path to save figure. If None, displays plot.
     """
-    logging.info("Creating visualization...")
+    logger.info("Creating bimodality boxplot")
     
+    # Set up figure
     fig, ax = plt.subplots(figsize=(10, 6))
     
     # Prepare data for boxplot
-    groups = bimodality_df['group'].unique()
-    boxplot_data = [
-        bimodality_df[bimodality_df['group'] == group]['bimodality_index'] 
-        for group in groups
-    ]
+    groups = df['group'].unique()
+    boxplot_data = [df[df['group'] == g]['bimodality_index'].values for g in groups]
     
     # Create boxplot
     bp = ax.boxplot(boxplot_data, patch_artist=True, notch=False, widths=0.6)
     
     # Color scheme
     colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd']
-    for patch, color in zip(bp['boxes'], colors):
+    
+    # Customize boxes
+    for patch, color in zip(bp['boxes'], colors[:len(groups)]):
         patch.set_facecolor(color)
         patch.set_edgecolor('black')
         patch.set_linewidth(1)
     
-    # Add individual data points
+    # Overlay individual points
     for i, group in enumerate(groups):
-        group_data = bimodality_df[bimodality_df['group'] == group]
-        x_coords = [i + 1] * len(group_data)
-        y_coords = group_data['bimodality_index']
-        ax.scatter(x_coords, y_coords, color=colors[i], alpha=0.8, s=30, zorder=3)
+        group_data = df[df['group'] == group]
+        x_coords = np.full(len(group_data), i + 1)
+        y_coords = group_data['bimodality_index'].values
+        ax.scatter(x_coords, y_coords, color=colors[i], alpha=0.7, s=50, zorder=3)
     
-    # Styling
+    # Customize plot
     ax.set_xticks(range(1, len(groups) + 1))
     ax.set_xticklabels(groups, rotation=45, ha='right')
     ax.set_xlabel('Group', fontsize=12)
     ax.set_ylabel('Bimodality Index', fontsize=12)
-    ax.set_title('Cancer Cell Clonal Heterogeneity by Histologic Subtype', 
-                 fontsize=14, fontweight='bold')
+    ax.set_title('Bimodality Index by Group', fontsize=14, fontweight='bold')
     
-    # Remove spines
+    # Remove top and right spines
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
     plt.tight_layout()
     
+    # Save or display
     if output_path:
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        logging.info(f"Figure saved to {output_path}")
+        logger.info(f"Saved plot to {output_path}")
+    else:
+        plt.show()
     
-    plt.show()
+    plt.close()
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Main Pipeline
-# ══════════════════════════════════════════════════════════════════════════════
+# ============================================================================
+# Main Workflow
+# ============================================================================
 
 def main():
-    """Run the complete bimodality analysis pipeline."""
+    """Main analysis workflow."""
     
-    logging.info("="*80)
-    logging.info("CANCER CELL BIMODALITY ANALYSIS")
-    logging.info("="*80)
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description='Bimodality analysis of single-cell RNA-seq data'
+    )
+    parser.add_argument(
+        '--data_dir', 
+        type=str, 
+        default='/path/to/data',
+        help='Directory containing 10X format data'
+    )
+    parser.add_argument(
+        '--output_dir', 
+        type=str, 
+        default='/path/to/output',
+        help='Output directory for results'
+    )
+    parser.add_argument(
+        '--n_hvg', 
+        type=int, 
+        default=5000,
+        help='Number of highly variable genes to use'
+    )
+    
+    args = parser.parse_args()
+    
+    # Convert to Path objects
+    data_dir = Path(args.data_dir)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Define sample groupings
+    # NOTE: Update this mapping based on your experimental groups
+    sample_groups = {
+        'Sample_01': 'Group_A',
+        'Sample_02': 'Group_B',
+        'Sample_03': 'Group_B',
+        'Sample_04': 'Group_C',
+        'Sample_05': 'Group_C',
+        'Sample_06': 'Group_C',
+        'Sample_07': 'Group_B',
+        'Sample_08': 'Group_C',
+        'Sample_09': 'Group_A',
+        'Sample_10': 'Group_B',
+        'Sample_11': 'Group_D',
+        'Sample_12': 'Group_C',
+        'Sample_13': 'Group_D',
+        'Sample_14': 'Group_D',
+        'Sample_15': 'Group_A',
+        'Sample_16': 'Group_D',
+        'Sample_17': 'Group_D',
+        'Sample_18': 'Group_D',
+    }
     
     # Load data
-    adata = load_data(DATA_DIR, METADATA_FILE)
-    
-    # Prepare data
-    adata = prepare_data(adata)
+    adata = load_data(data_dir, sample_groups)
     
     # Identify highly variable genes
-    identify_hvg(adata, n_top_genes=N_HVG)
+    adata = identify_highly_variable_genes(adata, n_top_genes=args.n_hvg)
     
-    # Calculate bimodality indices
-    bimodality_df = calculate_bimodality_all_samples(adata)
+    # Run bimodality analysis
+    logger.info("\n" + "="*60)
+    logger.info("Running Bimodality Analysis")
+    logger.info("="*60)
+    df_bimodality = run_bimodality_analysis(adata, sample_col='sample_id')
     
     # Display results
-    print("\n" + "="*80)
-    print("BIMODALITY RESULTS")
-    print("="*80)
-    print(bimodality_df)
-    
-    # Statistical analysis
-    perform_statistical_analysis(bimodality_df, alpha=ALPHA_LEVEL)
-    
-    # Visualization
-    create_boxplot(bimodality_df, output_path="bimodality_boxplot.png")
+    logger.info("\nBimodality Results:")
+    print(df_bimodality.to_string(index=False))
     
     # Save results
-    output_file = "bimodality_results.csv"
-    bimodality_df.to_csv(output_file, index=False)
-    logging.info(f"\nResults saved to {output_file}")
+    results_path = output_dir / 'bimodality_results.csv'
+    df_bimodality.to_csv(results_path, index=False)
+    logger.info(f"\nSaved results to {results_path}")
     
-    logging.info("\n" + "="*80)
-    logging.info("ANALYSIS COMPLETE")
-    logging.info("="*80)
+    # Statistical analysis
+    perform_statistical_tests(df_bimodality)
+    
+    # Create visualization
+    plot_path = output_dir / 'bimodality_boxplot.png'
+    plot_bimodality_boxplot(df_bimodality, output_path=plot_path)
+    
+    logger.info("\nAnalysis complete!")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
