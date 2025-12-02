@@ -44,7 +44,7 @@ The analysis uses both **R** and **Python**.
 
 ### R
 
-- R ≥ 4.4  
+- R ≥ 4.3  
 - Core packages
   - `Seurat`, `SeuratObject`
   - `Harmony`
