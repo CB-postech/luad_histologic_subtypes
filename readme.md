@@ -33,8 +33,7 @@ TBD
 
 Interactive visualization of selected processed datasets is available via **cellxgene**:
 
-- LUAD single-cell atlas (this study):  
-  👉 [Open in cellxgene] TBA
+👉 [Open in cellxgene] TBA
 
 Through the cellxgene interface, users can:
 - explore cell type and subtype annotations,  
