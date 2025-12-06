@@ -23,10 +23,6 @@ We dissect intercellular interactions among cancer cells, macrophages, and CD8‚Å
 
 ---
 
-## Repository Structure
-
-TBD
-
 ---
 
 ## Interactive Data Exploration (cellxgene)
