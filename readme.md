@@ -23,8 +23,6 @@ We dissect intercellular interactions among cancer cells, macrophages, and CD8‚Å
 
 ---
 
----
-
 ## Interactive Data Exploration (cellxgene)
 
 Interactive visualization of selected processed datasets is available via **cellxgene**:
