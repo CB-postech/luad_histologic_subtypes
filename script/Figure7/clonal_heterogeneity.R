@@ -335,7 +335,6 @@ run_heterogeneity_analysis <- function(input_dir, sample_groups) {
 # EXAMPLE USAGE
 # ==============================================================================
 
-# Uncomment to run analysis:
 # results <- run_heterogeneity_analysis(
 #   input_dir = INPUT_DIR,
 #   sample_groups = SAMPLE_GROUPS
