@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
-# Please consult the Numbat paper (https://doi.org/10.1038/s41587-022-01468-y) and official documentation (https://kharchenkolab.github.io/numbat/) first.
+# Please review the Numbat paper (https://doi.org/10.1038/s41587-022-01468-y) and official documentation (https://kharchenkolab.github.io/numbat/) first.
 # Clonal Heterogeneity Analysis from Numbat CNV Data
 # 
 # This script calculates clonal heterogeneity metrics from phylogenetic
