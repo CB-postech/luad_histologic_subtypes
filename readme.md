@@ -27,31 +27,6 @@ We dissect intercellular interactions among cancer cells, macrophages, and CD8�
 
 Interactive visualization of selected processed datasets is available via **cellxgene**:
 
-👉 [Open in cellxgene] TBA
+👉 https://cellxgene.cziscience.com/collections/0bebef1a-4607-4584-9070-dacf89a0d635
 
 
----
-
-## Requirements
-
-The analysis uses both **R** and **Python**.
-
-### R
-
-- R ≥ 4.3  
-- Core packages
-  - `Seurat`, `SeuratObject`
-  - `Harmony`
-  - `dplyr`, `data.table`
-  - `ggplot2`, `patchwork`
-
-### Python
-
-- Python ≥ 3.9  
-- Core packages
-  - `numpy`, `pandas`, `scikit-learn`
-  - `anndata`, `scanpy`, `celltypist`
-  - `matplotlib`, `seaborn`
-  
-
----
